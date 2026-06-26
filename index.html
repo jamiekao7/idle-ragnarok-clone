@@ -32,6 +32,13 @@
     button:hover {
       background-color: #2563eb;
     }
+    /* 將屬性點數的加減按鈕做大一點，方便點擊 */
+    .stat-row button {
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      font-size: 20px;
+    }
     .stat-row {
       display: flex;
       align-items: center;
@@ -58,6 +65,23 @@
     }
     #playerInfo p {
       margin: 4px 0;
+    }
+
+    /* 卡片顯示樣式 */
+    .card {
+      display: inline-block;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      padding: 6px 10px;
+      margin: 4px;
+      background: #fefce8;
+      font-size: 12px;
+    }
+    #cardCollection {
+      padding: 4px 0;
+    }
+    #chatLog {
+      white-space: pre-wrap;
     }
   </style>
 </head>
@@ -121,6 +145,10 @@
 
   <div id="game" class="container" style="display:none;">
     <h2>冒險中</h2>
+    <!-- 顯示目前遭遇的怪物圖片 -->
+    <div id="monsterImageContainer" style="margin-bottom:10px;">
+      <img id="monsterImage" src="" alt="怪物" style="display:none;width:120px;height:120px;border:1px solid #ccc;border-radius:8px;">
+    </div>
     <div id="playerInfo"></div>
     <div id="log"></div>
     <button onclick="saveGame()">儲存進度</button>
@@ -128,6 +156,19 @@
     <input type="file" id="importFile" style="display:none;" onchange="importGame(event)">
     <button onclick="document.getElementById('importFile').click()">匯入存檔</button>
     <button id="rebornBtn" onclick="reborn()" style="display:none;">轉生</button>
+
+    <h3>卡片系統</h3>
+    <button onclick="drawCard()">抽卡（花費 50 Zeny）</button>
+    <div id="cardCollection"></div>
+
+    <h3>商店</h3>
+    <button onclick="buyPotion()">買藥水（10 Zeny）</button>
+    <button onclick="buyCardPack()">買卡包（50 Zeny）</button>
+
+    <h3>世界對話</h3>
+    <div id="chatLog" style="background:#f9f9f9;height:100px;overflow-y:auto;border:1px solid #ccc;padding:5px;margin-bottom:5px;"></div>
+    <input id="chatInput" type="text" placeholder="輸入對話內容..." style="width:80%;">
+    <button onclick="sendChat()">送出</button>
   </div>
 
   <script>
@@ -191,7 +232,10 @@
         // 經驗值倍率（GM 模式啟動時調整）
         gmMultiplier: 1,
         // 冒險位置
-        location: locations[Math.floor(Math.random() * locations.length)]
+        location: locations[Math.floor(Math.random() * locations.length)],
+        // 卡片收集與藥水數量
+        cards: [],
+        potions: 0
       };
 
       document.getElementById('create').style.display = 'none';
@@ -199,6 +243,8 @@
       updatePlayerInfo();
       logMessage('冒險開始！你正在' + player.location + '周邊尋找魔物…');
       startLoop();
+      // 初始化卡片顯示
+      renderCardCollection();
     }
 
     function updatePlayerInfo() {
@@ -210,6 +256,7 @@
         `<p>經驗: ${player.xp.toFixed(1)} / ${player.xpNext}</p>` +
         `<p>HP: ${player.hp} / ${player.hpMax} | SP: ${player.sp} / ${player.spMax}</p>` +
         `<p>Zeny: ${player.zeny}</p>` +
+        `<p>藥水: ${player.potions} | 卡片數: ${player.cards.length}</p>` +
         `<p>力量 ${player.stats.str}‧敏捷 ${player.stats.dex}‧體質 ${player.stats.con}‧智力 ${player.stats.int}‧精神 ${player.stats.wis}‧魅力 ${player.stats.cha}</p>`;
       // 顯示或隱藏轉生按鈕
       const rebornBtn = document.getElementById('rebornBtn');
@@ -250,15 +297,122 @@
       updatePlayerInfo();
     }
 
+    // 抽卡：花費 50 Zeny，隨機取得一張卡牌
+    function drawCard() {
+      const cost = 50;
+      if (!player) return;
+      if (player.zeny < cost) {
+        logMessage('Zeny 不足，無法抽卡！');
+        return;
+      }
+      player.zeny -= cost;
+      // 隨機抽取卡片
+      const card = cardsData[Math.floor(Math.random() * cardsData.length)];
+      player.cards.push(card);
+      logMessage(`你抽到了卡片：「${card.name}」（${card.rarity}）`);
+      updatePlayerInfo();
+      // 更新卡片欄顯示
+      renderCardCollection();
+    }
+
+    // 更新卡片顯示區
+    function renderCardCollection() {
+      const colDiv = document.getElementById('cardCollection');
+      if (!colDiv) return;
+      colDiv.innerHTML = '';
+      player.cards.forEach((card, idx) => {
+        const cardEl = document.createElement('div');
+        cardEl.className = 'card';
+        cardEl.textContent = `${card.name} (${card.rarity})`;
+        colDiv.appendChild(cardEl);
+      });
+    }
+
+    // 購買藥水：每瓶 10 Zeny，立即增加藥水數量
+    function buyPotion() {
+      const price = 10;
+      if (!player) return;
+      if (player.zeny < price) {
+        logMessage('Zeny 不足，無法購買藥水！');
+        return;
+      }
+      player.zeny -= price;
+      player.potions += 1;
+      logMessage('購買了 1 瓶藥水。');
+      updatePlayerInfo();
+    }
+
+    // 購買卡包：相當於抽三張卡
+    function buyCardPack() {
+      const cost = 50;
+      if (!player) return;
+      if (player.zeny < cost) {
+        logMessage('Zeny 不足，無法購買卡包！');
+        return;
+      }
+      player.zeny -= cost;
+      logMessage('你購買了一個卡包，打開看看！');
+      // 抽三張卡
+      for (let i = 0; i < 3; i++) {
+        const card = cardsData[Math.floor(Math.random() * cardsData.length)];
+        player.cards.push(card);
+        logMessage(`獲得卡片：「${card.name}」（${card.rarity}）`);
+      }
+      updatePlayerInfo();
+      renderCardCollection();
+    }
+
+    // 處理聊天輸入
+    function sendChat() {
+      const inputEl = document.getElementById('chatInput');
+      const chatLogEl = document.getElementById('chatLog');
+      if (!inputEl || !chatLogEl) return;
+      const text = inputEl.value.trim();
+      if (!text) return;
+      // 顯示玩家訊息
+      chatLogEl.textContent += `你：${text}\n`;
+      inputEl.value = '';
+      // 取得 AI 回覆
+      const reply = getAIResponse(text);
+      chatLogEl.textContent += `世界：${reply}\n`;
+      chatLogEl.scrollTop = chatLogEl.scrollHeight;
+    }
+
+    function getAIResponse(msg) {
+      const lower = msg.toLowerCase();
+      if (lower.includes('你好') || lower.includes('哈囉') || lower.includes('hello')) {
+        return '你好，冒險者！';
+      }
+      if (lower.includes('名字')) {
+        return '我是世界之聲。';
+      }
+      if (lower.includes('位置') || lower.includes('哪裡')) {
+        return `你現在在 ${player.location}。`;
+      }
+      // 預設回覆
+      const replies = ['祝你好運！', '冒險愉快！', '請小心怪物！', 'Zeny 要多存！', '力量與智謀同樣重要。'];
+      return replies[Math.floor(Math.random() * replies.length)];
+    }
+
     // 模擬隨機怪物，使用RO經典怪物
     const monsters = [
-      {name: '波利（Poring）', hp: 6, attack: 1, xp: 3, zeny: 2},
-      {name: '搖滾蝗蟲（Fabre）', hp: 8, attack: 2, xp: 4, zeny: 3},
-      {name: '瘋兔（Lunatic）', hp: 10, attack: 3, xp: 6, zeny: 4},
+      {name: '波利（Poring）', hp: 6, attack: 1, xp: 3, zeny: 2, img: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHgAAAB4CAYAAAA5ZDbSAAAFS0lEQVR4nO2dTWgcZRzGn918tE20xjbUoFJjbCQQE+0hQhpckkNBtLaJirF40KbkUD8SsBV68OCxVWiIiKWYLd5EKIRCoSfbmLaxUC8S20shliIaRW3E0JrdZtfL7rKd7Lg7M+/3Pr9bFmbmP+9vnv98QN4XIIQQQgghhBBCCCHEBmK6C5BENsK2To2JCyezRmb2wJnQO4sd31Xy59A71IythRekRpFZKR7pVo2ZTcUqleqHbbKNLxA5sTql+lEk29hxNLYwGCzWi8mijSsIFon1YqJoYwqBxWK9mCRaewE5si6I9ZITrXWMdQt2JrV+6E6zTsFOptYPXWmOqz5gjqqSCxS6VJRPqKFQfUU535LLobplqxRcdan9P1S1bFUtmnI9qGrZKgRTrg8qJMsWTLllkC1ZpmDKrRCZknW9JhFFyBLM9AZEVoplCKbckMiQLFow5UZEtGTegx1HpGCmVxAiUyxKMOUKRpRktmjHESGY6ZWEiBQzwY4TVTDTK5moKWaCHSeKYKZXEVFSzAQ7TljBTK9iwqaYCXYcCnacMILZnjURpk0zwY5DwY4TVDDbs2aCtmkm2HEo2HEo2HEo2HGCCOYDliEEedBigh2Hgh2Hgh2nVncBYWj44mU8u+VJxBBDOrOKib5R9GxpL7vd1b9uYvbXH3Gg8wUFVZqBlYLr43WY2XMEADD/5w2MnJ/ElVcnym7XuWkrOjdtlV2eUVgpuJiuza346Z9FLN6+hZHzk1hO38F9dRtwcmAcLQ0Poik5jKG2XmxvbsNY1240JYextP9rAEBTchjvPPUiLi5ew9LKMj7qeQNDj/fitztLGJ35FLdWltF6/0M4e/N7/LHvK81nGg7r78Hf/PwDnmluw8G5JPa2JzA7eBR72xM4NJcEAKyspvH6tgTGunav2TaVSaN5/UZ8u+cIpp//EOMXTwAADs0lMbwtgQuDH+OVtj4sp/9Vek4isTLBqUwa/acPIwvggfoGTPWPoW/6A5wcGAcAvPbEczh8+UsAQE08jp2Pbi+5n0w2i30dOwEAbRtb8HfqNgBg5pd5TPWPAQB2PdaDmpi9ObBScPE9OE/W57W/NlaDeKz0bEX18Vo0rWss/B3LzWqUWr1b+C2DLLLq5y8Thr2XpoeBR7pxauESAODUwiX0P9xddpu4TzJ3tHTg9I3LAIDphe98Lx4bsDLBpfikdwT7ZyZx4upZNNatL7TrMBzbMYo3zx3DZ/Nn0NvSgca6dQIrVUuQmdaq5lv0W+cm8P7TQ+je3Iorv1/HwbkpzA4e1V3WPVQ6U54zCRbJe10v4d0Lx7Ghth6p1bv4PPG27pJCwwRbSqUJDvKQFfNZNIooJshEps48RZPSULDjULDjULDjBBXMBy3NBJ0pngl2HAp2nDCC2aY1EWYhDybYcSjYccIKZptWTNh1lphgx4kimClWRJRV0phgx4kqmCmWTNQ1DplgxxEhmCmWhIgVSplgxxElmCkWjKj1hUUmmJIFIXLxaLZoxxEtmCmOiOil32UkmJJDIlouIK9FU3JAZMgFeA92HpmCmeIKkZVeQH6CKbkMMuUCalo0JfsgWy6g7h5MyR5UyFVyAA9ZoDCZZlVSdKErGXvVgvNU5f8aq0ptMbpek6quZeuQq+WAHpxv2apb8prj6zhoCZxs2bpSe08NOg/uwZk0605tMdoLKIG1ok0Sm8eYQkpgjWgTxeYxrqASGCvaZLF5jC2sBIUZI3XK9rzeGT9+xhfog1LZtkktxqpifVgzF2wU6T4fYKwdJ2sLL0OUCYBdHRNCCCGEEEIIIYQQu/kPhJWToL7TV9EAAAAASUVORK5CYII='},
+      {name: '搖滾蝗蟲（Fabre）', hp: 8, attack: 2, xp: 4, zeny: 3, img: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHgAAAB4CAYAAAA5ZDbSAAAE8klEQVR4nO2dTWgUZxjH//thQ05CvQU1ehAvaTSpUBET9lZKmzSWYhUJPRQMDRLiQZpDGyiF4s3FSrEU2vNCbU1sC6UxFxV6KBIRSU424EWKFEqgJmE/ekh23E5mmszM+/ns/3fbNzuZZ97f/p+Z2ZB5AUIIIYQQQgghhBBCfCBnuwBNNDJsK2pOJBzMFpnlv8qpf9nky5NRw97Ok6+FB1KzyNwpIelezZlPxRqVGodvsp0vEJtibUqNo0W2s/PobGFwWGwYl0U7VxA8EhvGRdHOFAKPxYZxSbT1AjZpSBAbZlO01Tm2LVhMauOwnWabgkWmNg5bac6b3uEmbSUXCLpUlq9QU2H6EyW+JW+H6ZZtUnDbpfb/MNWyTbVoyg1hqmWbEEy5MZiQrFsw5W6Dbsk6BVPuDtEp2dZtEjGELsFMb0J0pViHYMpNiQ7JqgVTbkZUS+Y5WDgqBTO9ilCZYlWCKVcxqiSzRQtHhWCmVxMqUswECyerYKZXM1lTzAQLJ4tgptcQWVLMBAsnrWCm1zBpU8wEC4eChZNGMNuzJdK0aSZYOBQsnKSC2Z4tk7RNM8HCoWDhULBwKFg4RdsFZOFS1yV0v9odvO55owel8VLke6cOTOHy8mVDlbmD14ILLxVw4dYF22U4jdeCo3i69BSVixU8//s5jo8eR+nDUvCz2elZLP++DOSAc1+ew57uPZg6MIXet3qx95W9OPbeMdz46AZW/lxBdb2Kkc9GsL9/v7VjUYG4c/Cdr+9gaHoIEz9NYP7qfDBeW6thX98+TPw8gRPvn8DNj28G4/3v9GNwbBCz07MYPD+I8R/GMfrVKCqTFUtHoQ6vE1xbr+Ha0LXg9ekrpzH86TDuf38fj355hNWV1RdvzgG9b/YCAI6+fRQzn8xsDBdyOFw6DABYml/Csz+eBZus/bOGeq2OfMHfHHgtOOocfP3d6zgyfAQD5wdw95u7wXgun0Ou8OKxVMWOjUPPF/PI5TfG69U6xr4bw66OXWjUG3j822Ov5QICW/SThSfoG+lDdbWK6no1GK/X6lj8dREAsDCzgEMDh7Zse/C1g3j440MAwOLcIuauzJkpWiNeJziKkx+cRPn1Mrp6utC5uxPVtSqKHUUUO4p4cOsBbn9xG527O3H26tkt2576/BQqkxXc+/Ye8sU8zpTPWDgCtSR5lB7/2OAQO30UorgWTf5LEsG5mEWjiGGSPMiUCRYOBQuHgoVDwcJJKpgXWpZJ+qR4Jlg4FCycNILZpi2RZiEPJlg4FCyctILZpg2Tdp0lJlg4WQQzxYbIskoaEyycrIKZYs1kXeOQCRaOCsFMsSZUrFDKBAtHlWCmWDGq1hdWmWBKVoTKxaPZooWjWjBTnBHVS7/rSDAlp0S1XEBfi6bkhOiQC/AcLB6dgpniHaIrvYD+BFPyNuiUC5hp0ZQcg265gLlzMCWHMCHXyA5CNIDgYZptScsH3cjcmxbcpC3/mdxUaluxdZvUdi3bhlwrOwwhvmWbbslhbAtuIrJl20ptK64IBgSl2XZqW7FeQATeinZJbBNnConAG9Euim3iXEEROCvaZbFNnC0sgmCVEZuyQ7d3zs+f8wXGYFS2b1Jb8arYGLasH5RFeswXMN7Ok7eFb0Pite5bkDonhBBCCCGEEEIIIX7zL/E6gIBqTksXAAAAAElFTkSuQmCC'},
+      {name: '瘋兔（Lunatic）', hp: 10, attack: 3, xp: 6, zeny: 4, img: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHgAAAB4CAYAAAA5ZDbSAAAFGElEQVR4nO2db2hVZRzHv3eu27K5woqIBIOBBCriCBpB9qI/zGYTgi2DIh1rhFAjBCVCY9gf7IW0zLqYuhIbiEWolBSCTYKkoOhFIpT0pjdiSKULvdvd6YX33s6O9+zunPP8/d3v59XO5e6c33k+5/s7956x5wEIIYQQQgghhBBCCPGBnO0CNBFk+F1RYyLhZK6T+daPF1Lv7JWOO2q97O04+Vp4VWoWmXMlIt2rMfOpWKNS4/BNtvMFoizWptQ4QrKdHUdnC4PDYqO4LNq5guCR2CguinamEHgsNopLoq0XUCaQIDZKWbTVMbYtWExq47CdZpuCRaY2DltpbjJ9wDINJReodqksj1BTYfqKEt+S62G6ZZsU3HCpnQ1TLdtUi6bcCKZatgnBlBuDCcm6BVNuHXRL1imYcueITsm2viYRQ+gSzPQmRFeKdQim3JTokKxaMOVmRLVk3oOFo1Iw06sIlSlWJZhyFaNKMlu0cFQIZno1oSLFTLBwsgpmejWTNcVMsHCyCGZ6DZElxUywcNIKZnoNkzbFTLBwKFg4aQSzPVsiTZtmgoVDwcJJKpjt2TJJ2zQTLBwKFg4FC4eChZNEMD9gOUKSD1pMsHAoWDgULBwKFo5XgodXtWs/xjejIwCA8+fO4vThUe3H041Xgk0wPvouAODO9nvR2bvBcjXZESE4muzw9vCqdny9+w3sGejByFMP4ZeTXwC4ltBCfzfe6X0Q335SAACcKOxA8d8J7N/YO2M/E39dxMFN67Hn+bXYv7EXly/+aeK0lCBC8GyUJouYf+ttGNx7FM/uPIBjb78KAPju0D50vbgVg3uP4tTH7wEAHnlhC/Lzb0b/+4dn7OPLnduw/NEeDH54BCu6nsSJwg7j55EWkYKDYHrGz/f1PA0AWHj3Yly5/A8AYPXQa7jw+68Y/2gXrk5cmnV/v31/CsseXgMAWLmmD10vbdVUuXpECA4LvXLpb5Qmi9XteTfk0bLglup2Lndtaqqxzf0AgAfWDSDXNPswBKUSgvJzo6ameWhpbVNVunZECG5pbcP5c2cBAD8d/xTh+cVyudqn+MeZn7H8sbWYKl7FVPH/CyIIphFMT89476JlHTgzfhwA8MPnB/HVrtcVn4E+mm0XkITSZBGF/u7q9uIV92P10DY8sflNjG0ZQOvC27FoaQea8zfW3Vdn3wZ8sP5x3LVkKW5a0IapYhHN+TzuWdmJAy8/g+dGxqrv7d60HZ8ND+H0oX1oaW1D3/bdWs5PB0mm0uMfGxxirlMhimjRJJ4kgnMxi0YRwySZyJQJFg4FC4eChUPBwkkqmB+0LJN0pngmWDgULJw0gtmmLZFmIQ8mWDgULJy0gtmmDZN2nSUmWDhZBDPFhsiyShoTLJysgplizWRd45AJFo4KwUyxJlSsUMoEC0eVYKZYMarWF1aZYEpWhMrFo9mihaNaMFOcEdVLv+tIMCWnRLVcQFfi6bkhOiQC/AcLB6dgpniHaIrvYD+BFPyNuiUC5hp0ZQcg265gLlzMCWHMCHXyA5CNIDgYZptScsH3cjcmxbcpC3/mdxUaluxdZvUdi3bhlwrOwwhvmWbbslhbAtuIrJl20ptK64IBgSl2XZqW7FeQATeinZJbBNnConAG9Euim3iXEEROCvaZbFNnC0sgmCVEZuyQ7d3zs+f8wXGYFS2b1Jb8arYGLasH5RFeswXMN7Ok7eFb0Pite5bkDonhBBCCCGEEEIIIX7zL/E6gIBqTksXAAAAAElFTkSuQmCC'},
       // 額外加入經典怪物
-      {name: '哥布林（Goblin）', hp: 14, attack: 4, xp: 8, zeny: 6},
-      {name: '狼人（Werewolf）', hp: 18, attack: 6, xp: 12, zeny: 9},
-      {name: '毒蛇（Snake）', hp: 12, attack: 5, xp: 7, zeny: 5}
+      {name: '哥布林（Goblin）', hp: 14, attack: 4, xp: 8, zeny: 6, img: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHgAAAB4CAYAAAA5ZDbSAAAEzUlEQVR4nO2dS2hcVRyHv0n6EilEEBeCKGLRolQEjSBoK7oIFfEBDgSiWISKBRH6cKO4EMRHiwi1CF2IYLRQKy0UpFVBrVjRlQhFhIIIRbLoRnBjm3RcnElmvJk7yb33vOf3bXLvZGbO/55vfv+5MyH3gBBCCCGEEEIIIYQQKdAKXYAjOg0em9Wc5HAwy2R2fqv/ZK3Ng2+u/4xhSbXwJalNZK6WgvSk5iylYr1KLSM12dEXSFdsSKll9MmOdh6jLYyIxRaJWXR0BZGQ2CIxio6mEBIWWyQm0cEL6NLJQWyRruigcxxacDapLSN0mkMKzjK1ZYRK85jvAbuMlFxY6lJNvkKthe9XVPYteSV8t2yfgkcutcPw1bJ9tWjJLeCrZfsQLLkl+JDsWrDkroBryS4FS+4qcSk51Mck4QlXgpXeirhKsQvBklsTF5JtC5bchtiWrPfgzLEpWOm1hM0U2xIsuZaxJVktOnNsCFZ6HWEjxUpw5jQVrPQ6pmmKleDMaSJY6fVEkxQrwZlTV7DS65m6KVaCM0eCM6eOYLXnQNRp00pw5khw5lQVrPYcmKptWgnOHAnOHAnOHAnOnCqCdYIVCVVOtJTgzJHgzJHgzJHgzElS8OGjMNmG+6Zh+/NwYW74/Scmh99+7jx8cMRujbGQnOCvzsLxr+GHT+HsEdh6Dzz3arPnvP0WeGHaTn2xkZzgAx/C6y/C2jVmf9c0XLUBFhZg7qJJ9AMz5ufcxd7j9u2H+2fM7/64sPx5+1M+MQmvvAdbn4Y7HzcvqFRJTvC587Dl1t7+xqvhxPswPg573obpR+DMrPm59x1zn38vwd13wPezsLMNu98aPsaly3DtNfDdx3D8ILz0hrvjcU1ygufne9vvfgTbnoHbtpv9b3+G9pTZbk/BNz+Z7VYLnnjYbD81BT/+MnyMK1dgx5Nm++Yb4O9/bFXvn+QEb7oJfv3dbO9+Fk4cgj//Mvudku92xlow3nek69cNH2PdWpjY2Ntvhb6iZwOSE7yzDa8dhMvdJB/6pCfvwXvh2Gmzfew0bOu+r84vwBdnzPZnp8z9hjGW3KyUk9yhzDwKd22GLY/BQzvg+utgTfeEa/8+mD1pTqRmT8KBl83tG9bD51+a24+eMvcD2HQjvHk4zHH4okrz0R8bImK1l0JMLsGiGlUEt0oWjRKeqXIhUyU4cyQ4cyQ4cyQ4c6oK1olWYKpeKV4JzhwJzpw6gtWmA1FnIQ8lOHMkOHPqClab9kzddZaU4MxpIlgp9kSTVdKU4MxpKlgpdkzTNQ6V4MyxIVgpdoSNFUqV4MyxJVgptoyt9YVtJliSLWFz8Wi16MyxLVgpbojtpd9dJFiSa2JbLrhr0ZJcERdyQe/B2eNSsFK8SlylF9wnWJJXwKVc8NOiJbkE13LB33uwJBfwIdfLAAU6sHQxzZGk74XuZe5DXX1iJP+Z3Fdq+wn1MWnkWnYIuUEGLJB9y/bdkpeNH2LQAWTZskOl9n81hBy8QDZpDp3afoIXMIBkRcckdpFoChlAMqJjFLtIdAUNIFrRMYtdJNrCBrB0JcqQsgsf76Kfv+gLLMGr7NSk9pNUsSUsu8ZsE+klX8AkO0/JFr4Clde67yPXORFCCCGEEEIIIYRIm/8A1hca0+4XIV8AAAAASUVORK5CYII='},
+      {name: '狼人（Werewolf）', hp: 18, attack: 6, xp: 12, zeny: 9, img: 'data:image/png;base64,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'},
+      {name: '毒蛇（Snake）', hp: 12, attack: 5, xp: 7, zeny: 5, img: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHgAAAB4CAYAAAA5ZDbSAAAFiUlEQVR4nO2d208cZRjGn12Qg4EUKgULdolKsQXSJpUiqSUR46nU1HDRxkQvrDVqbEg08Q/olU2MiV540di0NybqlRqt0kZLPZRKK2lKUixNDKmlJgXacCiVZWV3vWBZl2UXmJnvNB/P73LIzrzz/eZ5Z2Y3fB9ACCGEEEIIIYQQQogfCOguQBJxD5+1akxsOJlFMuMHnnW9s8CxUxk3u96hZvxaeFKqF5krJU26r8bMT8UqlZoNv8k2vkAkxOqUmo0U2caOo7GFwWCx6Zgs2riC4COx6Zgo2phC4GOx6ZgkWnsBCeI2iE0nIVrrGOsWbE1qs6E7zToFW5nabOhKc1D1AROsKrlAskt5+QrVFaqvKOtb8nKobtkqBa+61C6FqpatqkVTbhqqWrYKwZSbBRWSZQum3GWQLVmmYMpdITIl63pNIoqQJZjpdYisFMsQTLkukSFZtGDK9YhoybwHW45IwUyvIESmWJRgyhWMKMls0ZYjQjDTKwkRKWaCLcerYKZXMl5TzARbjhfBTK8ivKSYCbYct4KZXsW4TTETbDkUbDluBLM9a8JNm2aCLYeCLcepYLZnzTht00yw5VCw5VCw5VCw5TgRzAcsQ3DyoMUEWw4FWw4FWw4FW45vBV+8PYlnTvai9fvf8XRnL4buhl3tp+TT04IrMwvfCn71l8s43tKAM23b8ebmDXj3/FXdJRlJru4C3DISjiAcjQEA9oTKUV6QB2AukQc3h3B2eAzjkVkc2vYw2qsr0D82hTe6+zEemcWB2gfwTkP1wv1NR/BUZy8+b92Cynvz0fHbFdycjiASi+GDpkfQtG6N8nMUgW8Fv9e4ES0nLqBtQxlerqlE6/q1AIBINI6ygjz8vLsJg3em8cR3F9BeXYGP/7iOw421qC8tQsOX3QsER2IxvHimDx81b0J9aRFe+7UfHfXVeGzdGlyfCmPPDxdxqX2HrlP1hG8Fv7KxCi+EyvH1XyN4u2cA7dXlOLStBjHEsb+2CgDwUHEhJiKzAID3m2rxxeBNnBgaxWRi2zwHz13BSzXr8WTl3EVy6u9b+HPyn+Tf785GEY3HkRPQPfOjc3x5Dx4NR3BueByl+fdgf20VftzViCMDQwCAvGAQJXn/X7fzTvZ29QEAOupCCKaImonGcHlsCj0jE8lts7E4Tj73KH7avR1dbY041tLgS7mATwUHAOzr6ks+Od8O/4tQUSEAIJjFQ+/oBPY9eD/C0RhmEvduAMjPCaL7+SZcuzONo1dvAAAeryjBV9eGAQCdN27hcN+gvJORjC9bdFlBHj7ZWYe9py+hMDcHOYEAjrc0LPmZt+pC2PHteWy9rxgl+bmYicaQnzN3fQcDAXzWugXN3/Rg69pifNi8Ca+f7ceRgSHkBgM4unPpfZuMk77DHxsMYqVTIfqyRZOV40RwIMuiUUQxTiYyZYIth4Ith4Ith4Itx6lgPmhpxulM8Uyw5VCw5bgRzDatCTcLeTDBlkPBluNWMNu0Ytyus8QEW44XwUyxIrysksYEW45XwUyxZLyuccgEW44IwUyxJESsUMoEW44owUyxYEStLywywZQsCJGLR7NFW45owUyxR0Qv/S4jwZTsEtFyAXktmpIdIkMuwHuw9cgUzBSvEFnpBeQnmJKXQaZcQE2LpuQsyJYLqLsHU3IaKuQqOUAacSA5meaqJOVCVzL2uiaeWJX/TK4qtanoek1adS1bh1wtB0zD+patuiUvOr6Og2bAypatK7ULatB58DSsSbPu1KaivYAM+Fa0SWLnMaaQDPhGtIli5zGuoAwYK9pksfMYW1gGkquM6JSd9npn/PgZX2AWlMr2m9RUfFVsFhatH+RFepYvYHw7Tr4tfBkcr3Wfgq1jQgghhBBCCCGEEOJv/gNXL7qdcfdzYQAAAABJRU5ErkJggg=='}
+    ];
+
+    // 卡牌資料，用於抽卡系統
+    const cardsData = [
+      { name: '火球術', description: '對敵人造成 5 點額外傷害', rarity: '普通' },
+      { name: '治療術', description: '恢復自身 10 點生命', rarity: '普通' },
+      { name: '雷擊', description: '對敵人造成 8 點額外傷害', rarity: '稀有' },
+      { name: '防護罩', description: '提升 5 點防禦，持續一場戰鬥', rarity: '稀有' },
+      { name: '怒吼', description: '提升 3 點攻擊力，持續三場戰鬥', rarity: '史詩' },
+      { name: '神聖之光', description: '恢復全體生命並造成 6 點對敵傷害', rarity: '傳說' }
     ];
 
     let currentMonster = null;
@@ -271,6 +425,12 @@
           currentMonster = monsters[Math.floor(Math.random() * monsters.length)];
           monsterHP = currentMonster.hp;
           logMessage(`遇到 ${currentMonster.name}！`);
+          // 顯示怪物圖片
+          const monsterImgEl = document.getElementById('monsterImage');
+          if (monsterImgEl && currentMonster.img) {
+            monsterImgEl.src = currentMonster.img;
+            monsterImgEl.style.display = 'block';
+          }
         }
         // 玩家攻擊
         const playerAtk = Math.max(1, Math.floor(player.stats.str / 2));
@@ -284,6 +444,11 @@
           player.xp += xpGain;
           player.zeny += zenyGain;
           currentMonster = null;
+          // 隱藏怪物圖片
+          const monsterImgEl2 = document.getElementById('monsterImage');
+          if (monsterImgEl2) {
+            monsterImgEl2.style.display = 'none';
+          }
           checkLevelUp();
           // 有一定機率切換到新的地圖
           if (Math.random() < 0.3) {
@@ -319,6 +484,7 @@
       }
       // 更新顯示（包括轉生按鈕）
       updatePlayerInfo();
+      renderCardCollection();
     }
 
     function saveGame() {
@@ -356,6 +522,7 @@
           document.getElementById('create').style.display = 'none';
           document.getElementById('game').style.display = 'block';
           updatePlayerInfo();
+          renderCardCollection();
           logMessage('成功匯入遊戲進度，冒險繼續！');
           if (gameLoop) clearInterval(gameLoop);
           currentMonster = null;
@@ -376,6 +543,7 @@
           document.getElementById('create').style.display = 'none';
           document.getElementById('game').style.display = 'block';
           updatePlayerInfo();
+          renderCardCollection();
           logMessage('已載入之前的遊戲進度。');
           if (gameLoop) clearInterval(gameLoop);
           currentMonster = null;
