@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>仙境傳說：簡易版</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f3f4f6;
+      color: #1f2937;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1, h2 {
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    button {
+      padding: 6px 12px;
+      margin: 4px;
+      border: none;
+      border-radius: 4px;
+      background-color: #3b82f6;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #2563eb;
+    }
+    .stat-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .stat-row label {
+      width: 60px;
+    }
+    .stat-row span {
+      width: 50px;
+      text-align: center;
+      font-weight: bold;
+    }
+    #log {
+      background: white;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      padding: 10px;
+      height: 220px;
+      overflow-y: auto;
+      font-size: 13px;
+      margin-top: 10px;
+      white-space: pre-wrap;
+    }
+    #playerInfo p {
+      margin: 4px 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="create" class="container">
+    <h1>仙境傳說：簡易放置版</h1>
+    <p>請選擇你的職業並分配能力值：</p>
+    <select id="classSelect">
+      <option value="swordsman">劍士</option>
+      <option value="magician">魔法師</option>
+      <option value="acolyte">服事</option>
+      <option value="thief">盜賊</option>
+      <option value="archer">弓箭手</option>
+      <option value="merchant">商人</option>
+    </select>
+    <div id="stats">
+      <p>可用點數: <span id="points">5</span></p>
+      <div class="stat-row">
+        <label>力量</label>
+        <button onclick="adjustStat('str', -1)">-</button>
+        <span id="str">1</span>
+        <button onclick="adjustStat('str', 1)">+</button>
+      </div>
+      <div class="stat-row">
+        <label>敏捷</label>
+        <button onclick="adjustStat('dex', -1)">-</button>
+        <span id="dex">1</span>
+        <button onclick="adjustStat('dex', 1)">+</button>
+      </div>
+      <div class="stat-row">
+        <label>體質</label>
+        <button onclick="adjustStat('con', -1)">-</button>
+        <span id="con">1</span>
+        <button onclick="adjustStat('con', 1)">+</button>
+      </div>
+      <div class="stat-row">
+        <label>智力</label>
+        <button onclick="adjustStat('int', -1)">-</button>
+        <span id="int">1</span>
+        <button onclick="adjustStat('int', 1)">+</button>
+      </div>
+      <div class="stat-row">
+        <label>精神</label>
+        <button onclick="adjustStat('wis', -1)">-</button>
+        <span id="wis">1</span>
+        <button onclick="adjustStat('wis', 1)">+</button>
+      </div>
+      <div class="stat-row">
+        <label>魅力</label>
+        <button onclick="adjustStat('cha', -1)">-</button>
+        <span id="cha">1</span>
+        <button onclick="adjustStat('cha', 1)">+</button>
+      </div>
+    </div>
+    <button onclick="startGame()">開始冒險</button>
+  </div>
+
+  <div id="game" class="container" style="display:none;">
+    <h2>冒險中</h2>
+    <div id="playerInfo"></div>
+    <div id="log"></div>
+    <button onclick="saveGame()">儲存進度</button>
+    <button onclick="exportGame()">匯出存檔</button>
+    <input type="file" id="importFile" style="display:none;" onchange="importGame(event)">
+    <button onclick="document.getElementById('importFile').click()">匯入存檔</button>
+  </div>
+
+  <script>
+    // 定義職業的基礎數值
+    const classes = {
+      swordsman: {name: '劍士', base: {str: 4, dex: 2, con: 4, int: 1, wis: 1, cha: 1}},
+      magician: {name: '魔法師', base: {str: 1, dex: 2, con: 2, int: 4, wis: 3, cha: 1}},
+      acolyte: {name: '服事', base: {str: 2, dex: 2, con: 3, int: 3, wis: 3, cha: 1}},
+      thief: {name: '盜賊', base: {str: 2, dex: 4, con: 2, int: 2, wis: 2, cha: 2}},
+      archer: {name: '弓箭手', base: {str: 2, dex: 4, con: 2, int: 1, wis: 2, cha: 2}},
+      merchant: {name: '商人', base: {str: 3, dex: 2, con: 3, int: 2, wis: 2, cha: 4}}
+    };
+
+    let availablePoints = 5;
+    const stats = {str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1};
+    let player = null;
+    let gameLoop = null;
+
+    function adjustStat(attr, delta) {
+      if (delta > 0 && availablePoints > 0) {
+        stats[attr] += delta;
+        availablePoints -= delta;
+      } else if (delta < 0 && stats[attr] > 1) {
+        stats[attr] += delta;
+        availablePoints += -delta;
+      }
+      document.getElementById(attr).textContent = stats[attr];
+      document.getElementById('points').textContent = availablePoints;
+    }
+
+    function startGame() {
+      const clsKey = document.getElementById('classSelect').value;
+      const cls = classes[clsKey];
+      // 計算總數值：基礎 + 自行分配
+      const totalStats = {};
+      for (const attr in stats) {
+        totalStats[attr] = cls.base[attr] + stats[attr];
+      }
+      // 初始化玩家
+      player = {
+        classKey: clsKey,
+        className: cls.name,
+        stats: totalStats,
+        level: 1,
+        xp: 0,
+        xpNext: 10,
+        hp: 10 + totalStats.con * 2,
+        hpMax: 10 + totalStats.con * 2,
+        sp: 5 + totalStats.int,
+        spMax: 5 + totalStats.int,
+        zeny: 0
+      };
+
+      document.getElementById('create').style.display = 'none';
+      document.getElementById('game').style.display = 'block';
+      updatePlayerInfo();
+      logMessage('冒險開始！你正在普隆德拉周邊尋找魔物…');
+      startLoop();
+    }
+
+    function updatePlayerInfo() {
+      const infoDiv = document.getElementById('playerInfo');
+      infoDiv.innerHTML =
+        `<p>職業: ${player.className} | 等級: ${player.level}</p>` +
+        `<p>經驗: ${player.xp.toFixed(1)} / ${player.xpNext}</p>` +
+        `<p>HP: ${player.hp} / ${player.hpMax} | SP: ${player.sp} / ${player.spMax}</p>` +
+        `<p>Zeny: ${player.zeny}</p>` +
+        `<p>力量 ${player.stats.str}‧敏捷 ${player.stats.dex}‧體質 ${player.stats.con}‧智力 ${player.stats.int}‧精神 ${player.stats.wis}‧魅力 ${player.stats.cha}</p>`;
+    }
+
+    function logMessage(msg) {
+      const logDiv = document.getElementById('log');
+      logDiv.textContent += msg + '\n';
+      logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    // 模擬隨機怪物，使用RO經典怪物
+    const monsters = [
+      {name: '波利（Poring）', hp: 6, attack: 1, xp: 3, zeny: 2},
+      {name: '搖滾蝗蟲（Fabre）', hp: 8, attack: 2, xp: 4, zeny: 3},
+      {name: '瘋兔（Lunatic）', hp: 10, attack: 3, xp: 6, zeny: 4}
+    ];
+
+    let currentMonster = null;
+    let monsterHP = 0;
+
+    function startLoop() {
+      gameLoop = setInterval(() => {
+        if (!currentMonster) {
+          // 產生新怪物
+          currentMonster = monsters[Math.floor(Math.random() * monsters.length)];
+          monsterHP = currentMonster.hp;
+          logMessage(`遇到 ${currentMonster.name}！`);
+        }
+        // 玩家攻擊
+        const playerAtk = Math.max(1, Math.floor(player.stats.str / 2));
+        monsterHP -= playerAtk;
+        logMessage(`你對 ${currentMonster.name} 造成 ${playerAtk} 點傷害。`);
+        if (monsterHP <= 0) {
+          logMessage(`${currentMonster.name} 被擊敗了！獲得 ${currentMonster.xp} 經驗與 ${currentMonster.zeny} Zeny。`);
+          player.xp += currentMonster.xp;
+          player.zeny += currentMonster.zeny;
+          currentMonster = null;
+          checkLevelUp();
+          updatePlayerInfo();
+          return;
+        }
+        // 怪物攻擊
+        const monsterAtk = currentMonster.attack;
+        player.hp -= monsterAtk;
+        logMessage(`${currentMonster.name} 攻擊你，造成 ${monsterAtk} 點傷害。`);
+        if (player.hp <= 0) {
+          logMessage('你已經陣亡... 遊戲結束。');
+          clearInterval(gameLoop);
+        }
+        updatePlayerInfo();
+      }, 1000);
+    }
+
+    function checkLevelUp() {
+      while (player.xp >= player.xpNext) {
+        player.xp -= player.xpNext;
+        player.level += 1;
+        player.xpNext = Math.floor(player.xpNext * 1.5);
+        // 每升級獲得增益
+        player.hpMax += player.stats.con;
+        player.spMax += player.stats.int;
+        player.hp = player.hpMax;
+        player.sp = player.spMax;
+        logMessage(`恭喜！你升到了 ${player.level} 級，體力與精力完全恢復。`);
+      }
+    }
+
+    function saveGame() {
+      if (player) {
+        localStorage.setItem('idleRagnarokSave', JSON.stringify(player));
+        logMessage('遊戲進度已儲存到本地。');
+      }
+    }
+
+    function exportGame() {
+      if (!player) return;
+      const data = JSON.stringify(player);
+      const blob = new Blob([data], {type: 'application/json'});
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'idle_ragnarok_save.json';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    function importGame(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = JSON.parse(e.target.result);
+          player = data;
+          // 確保某些欄位存在
+          player.hp = Math.min(player.hp, player.hpMax);
+          player.sp = Math.min(player.sp, player.spMax);
+          document.getElementById('create').style.display = 'none';
+          document.getElementById('game').style.display = 'block';
+          updatePlayerInfo();
+          logMessage('成功匯入遊戲進度，冒險繼續！');
+          if (gameLoop) clearInterval(gameLoop);
+          currentMonster = null;
+          startLoop();
+        } catch (err) {
+          alert('匯入存檔失敗：' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    // 載入已儲存的遊戲（若存在）
+    window.addEventListener('load', () => {
+      const saved = localStorage.getItem('idleRagnarokSave');
+      if (saved) {
+        if (confirm('檢測到存在存檔，是否要載入?')) {
+          player = JSON.parse(saved);
+          document.getElementById('create').style.display = 'none';
+          document.getElementById('game').style.display = 'block';
+          updatePlayerInfo();
+          logMessage('已載入之前的遊戲進度。');
+          if (gameLoop) clearInterval(gameLoop);
+          currentMonster = null;
+          startLoop();
+        }
+      }
+    });
+  </script>
+</body>
+</html>
